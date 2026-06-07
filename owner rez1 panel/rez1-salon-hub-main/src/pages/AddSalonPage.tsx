@@ -448,7 +448,19 @@ export default function AddSalonPage() {
         if (data?.url) upiPublicUrl = data.url;
       }
 
-      const { error: insertError } = await supabase.functions.invoke('admin-api', {
+      const formattedServices = services.map(svc => ({
+        name: svc.name.trim(),
+        price: Number(svc.price) || 0,
+        duration: 30,
+        category: ""
+      }));
+
+      // To bypass the unique 'email' constraint in salon_requests for an owner's 2nd branch,
+      // we append a +branch tag to their email. The approve-salon function now uses owner_id anyway.
+      const baseEmail = ownerProfile?.email || "pending@update.com";
+      const uniqueEmail = baseEmail.replace("@", `+branch${Date.now()}@`);
+
+      const { data: dbData, error: insertError } = await supabase.functions.invoke('admin-api', {
         body: {
           action: 'INSERT',
           table: 'salon_requests',
@@ -456,10 +468,10 @@ export default function AddSalonPage() {
             owner_id: user.id,
             owner_name: ownerProfile?.full_name || form.accountHolderName,
             phone: ownerProfile?.phone || form.upiNumber,
-            email: ownerProfile?.email || "pending@update.com",
+            email: uniqueEmail,
             password_hash: "",
             salon_name: form.salonName,
-            address: form.address,   // was incorrectly 'salon_address'
+            address: `${form.address}|||${form.latitude || ""},${form.longitude || ""}`,
             salon_images: imagePaths,
             description: form.description,
             open_time: form.openTime,
@@ -472,7 +484,7 @@ export default function AddSalonPage() {
             ifsc_code: form.ifscCode,
             upi_number: form.upiNumber,
             upi_scanner_url: upiPublicUrl,
-            services: services,
+            services: formattedServices,
             agreed_to_terms: agreedToTerms,
             agreed_to_privacy: agreedToPrivacy,
             status: "pending"
@@ -481,6 +493,10 @@ export default function AddSalonPage() {
       });
 
       if (insertError) throw insertError;
+      if (dbData && !dbData.success) {
+        const detail = dbData?.error?.message || dbData?.error?.details || dbData?.error?.hint || (typeof dbData?.error === 'string' ? dbData.error : "Failed to save registration");
+        throw new Error(detail);
+      }
       
       setSubmitted(true);
     } catch (err: any) {

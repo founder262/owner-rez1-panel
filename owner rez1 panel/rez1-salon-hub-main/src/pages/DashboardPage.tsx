@@ -36,8 +36,8 @@ const formatSlotLabel = (time: string): string => {
 
 export default function DashboardPage() {
   const [salon, setSalon] = useState<any>(null);
-  const [shopOpen, setShopOpen] = useState(false);
   const [emergencyMode, setEmergencyMode] = useState(false);
+  const [showEmergencyModal, setShowEmergencyModal] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [todayBookings, setTodayBookings] = useState<any[]>([]);
   const [nextBooking, setNextBooking] = useState<any>(null);
@@ -71,8 +71,19 @@ export default function DashboardPage() {
       return;
     }
     setSalon(activeSalon);
-    setShopOpen(activeSalon.is_open);
     setEmergencyMode(activeSalon.is_emergency_mode || false);
+
+    // 12-hour emergency check
+    if (activeSalon.is_emergency_mode) {
+      const emergencyStartedAt = localStorage.getItem(`emergency_start_${activeSalon.id}`);
+      if (emergencyStartedAt) {
+        const startedTime = new Date(emergencyStartedAt).getTime();
+        const twelveHoursInMs = 12 * 60 * 60 * 1000;
+        if (Date.now() - startedTime > twelveHoursInMs) {
+          setShowEmergencyModal(true);
+        }
+      }
+    }
 
     const { data: unreadRes } = await supabase.functions.invoke("admin-api", {
       body: {
@@ -192,15 +203,18 @@ export default function DashboardPage() {
     }
   };
 
-  const handleEmergency = async () => {
+  const handleEmergency = async (isExtension = false) => {
     setEmergencyMode(true);
-    setShopOpen(false);
+    setShowEmergencyModal(false);
     if (salon) {
-      // 1. Update salon status to emergency mode + closed
+      // 1. Update salon status to emergency mode
       await supabase
         .from("salons")
-        .update({ is_open: false, is_emergency_mode: true })
+        .update({ is_emergency_mode: true })
         .eq("id", salon.id);
+
+      // Save start time
+      localStorage.setItem(`emergency_start_${salon.id}`, new Date().toISOString());
 
       // 2. Fetch all upcoming/today bookings that are NOT yet cancelled
       const today = new Date().toISOString().split("T")[0];
@@ -212,17 +226,32 @@ export default function DashboardPage() {
           filters: [{ column: "salon_id", value: salon.id }],
         },
       });
+
+      const now = new Date();
+      const twelveHoursFromNow = new Date(now.getTime() + 12 * 60 * 60 * 1000);
+
       const upcomingBookings = (upcomingRes?.data || []).filter(
-        (b: any) =>
-          b.booking_date >= today &&
-          b.status !== "cancelled" &&
-          b.status !== "completed"
+        (b: any) => {
+          if (b.status === "cancelled" || b.status === "completed") return false;
+          
+          const bookingDateStr = b.booking_date;
+          const bookingTimeStr = b.booking_time;
+          if (!bookingDateStr || !bookingTimeStr) return false;
+
+          const match = bookingTimeStr.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+          if (!match) return false;
+          let h = parseInt(match[1], 10);
+          const m = parseInt(match[2], 10);
+          const ampm = match[3]?.toUpperCase();
+          if (ampm === "PM" && h < 12) h += 12;
+          if (ampm === "AM" && h === 12) h = 0;
+          
+          const bookingDateTime = new Date(`${bookingDateStr}T${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:00`);
+          return bookingDateTime >= now && bookingDateTime <= twelveHoursFromNow;
+        }
       );
 
-      // 3. Cancel each booking via cancel-booking function so that:
-      //    - cancelled_by = 'emergency' is recorded correctly
-      //    - refund_status = 'pending_choice' is set for paid Razorpay bookings
-      //    - Customer is notified with refund/reschedule options
+      // 3. Cancel each booking for the next 12 hours via cancel-booking function
       for (const booking of upcomingBookings) {
         await supabase.functions.invoke("cancel-booking", {
           body: {
@@ -235,14 +264,16 @@ export default function DashboardPage() {
     }
     toast({
       title: "🚨 Emergency Mode Activated",
-      description: `All slots closed. ${salon ? "Customers with upcoming bookings have been notified." : ""}`,
+      description: `Bookings for the next 12 hours cancelled. Customers have been notified.`,
       variant: "destructive",
     });
   };
 
   const handleDeactivateEmergency = async () => {
     setEmergencyMode(false);
+    setShowEmergencyModal(false);
     if (salon) {
+      localStorage.removeItem(`emergency_start_${salon.id}`);
       await supabase
         .from("salons")
         .update({ is_emergency_mode: false })
@@ -251,15 +282,26 @@ export default function DashboardPage() {
     toast({ title: "Emergency mode deactivated" });
   };
 
-  const handleToggleShopOpen = async () => {
-    const newState = !shopOpen;
-    setShopOpen(newState);
-    if (salon) {
-      await supabase
-        .from("salons")
-        .update({ is_open: newState })
-        .eq("id", salon.id);
-    }
+  const isDuringBusinessHours = () => {
+    if (!salon || !salon.open_time || !salon.close_time) return false;
+    const now = new Date();
+    const currentMins = now.getHours() * 60 + now.getMinutes();
+    
+    const parseTime = (timeStr: string) => {
+      if (!timeStr) return 0;
+      const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+      if (!match) return 0;
+      let h = parseInt(match[1], 10);
+      const m = parseInt(match[2], 10);
+      const ampm = match[3]?.toUpperCase();
+      if (ampm === "PM" && h < 12) h += 12;
+      if (ampm === "AM" && h === 12) h = 0;
+      return h * 60 + m;
+    };
+    
+    const openMins = parseTime(salon.open_time);
+    const closeMins = parseTime(salon.close_time);
+    return currentMins >= openMins && currentMins <= closeMins;
   };
 
   if (!salon)
@@ -302,6 +344,30 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {showEmergencyModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-card border border-border p-6 rounded-2xl max-w-sm w-full text-center space-y-4"
+            >
+              <AlertTriangle className="h-12 w-12 text-destructive mx-auto" />
+              <h3 className="text-xl font-bold">12 Hours Passed</h3>
+              <p className="text-sm text-muted-foreground">
+                Your shop has been in Emergency Close for 12 hours. Do you want to reopen the shop or keep it closed? (Keeping it closed will cancel bookings for the next 12 hours).
+              </p>
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <Button variant="outline" onClick={handleDeactivateEmergency}>
+                  Reopen Shop
+                </Button>
+                <Button variant="destructive" onClick={() => handleEmergency(true)}>
+                  Keep Closed
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {emergencyMode && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
@@ -315,7 +381,7 @@ export default function DashboardPage() {
                   Emergency Mode Active
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  All bookings paused
+                  Bookings paused
                 </p>
               </div>
             </div>
@@ -333,21 +399,15 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div
-                className={`h-3 w-3 rounded-full ${shopOpen ? "bg-primary animate-pulse-soft" : "bg-muted-foreground"}`}
+                className={`h-3 w-3 rounded-full ${isDuringBusinessHours() ? "bg-primary animate-pulse-soft" : "bg-muted-foreground"}`}
               />
               <span className="font-semibold text-lg">
-                {shopOpen ? "Shop Open" : "Shop Closed"}
+                {isDuringBusinessHours() ? "Shop Open" : "Shop Closed"}
               </span>
             </div>
-            <Button
-              size="lg"
-              variant={shopOpen ? "outline" : "default"}
-              onClick={handleToggleShopOpen}
-              className="gap-2 h-12 px-6"
-            >
-              <Power className="h-4 w-4" />
-              {shopOpen ? "Close Shop" : "Open Shop"}
-            </Button>
+            <div className="text-sm text-muted-foreground font-medium">
+              {salon.open_time} - {salon.close_time}
+            </div>
           </div>
         </Card>
 

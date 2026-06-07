@@ -48,7 +48,7 @@ export function BookingNotification() {
   }, []);
 
   // Process a new alert — deduplicated by ID
-  const handleNewAlert = useCallback((newAlert: any) => {
+  const handleNewAlert = useCallback(async (newAlert: any) => {
     if (!newAlert?.id) return;
     if (lastSeenIdRef.current === newAlert.id) return;
     lastSeenIdRef.current = newAlert.id;
@@ -56,11 +56,29 @@ export function BookingNotification() {
     const isCancellation = (newAlert.customer_name || "").includes("❌") || 
                            (newAlert.customer_name || "").toLowerCase().includes("cancel");
 
+    let formattedTime = formatSlotLabel(newAlert.slot_time || newAlert.booking_time || "");
+
+    // Fetch the actual booking date from the bookings table to display in the notification
+    if (newAlert.booking_id) {
+      try {
+        const { data } = await supabase
+          .from("bookings")
+          .select("booking_date")
+          .eq("id", newAlert.booking_id)
+          .maybeSingle();
+        if (data?.booking_date) {
+          formattedTime += ` • ${new Date(data.booking_date).toLocaleDateString()}`;
+        }
+      } catch (err) {
+        console.error("Failed to fetch booking date for alert:", err);
+      }
+    }
+
     const alertUi: BookingAlert = {
       id: newAlert.id,
       customerName: newAlert.customer_name || "Customer",
       service: newAlert.service_summary || "Service",
-      time: formatSlotLabel(newAlert.slot_time || newAlert.booking_time || ""),
+      time: formattedTime,
       isCancellation,
     };
 

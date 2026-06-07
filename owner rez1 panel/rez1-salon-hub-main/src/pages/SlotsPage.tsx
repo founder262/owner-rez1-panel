@@ -78,41 +78,41 @@ export default function SlotsPage() {
       // Generate base times from salonData open_time, close_time
       const baseGenerator = [];
       
-      let openHour = parseInt(salonData.open_time?.split(':')[0] || "10", 10);
-      const openStr = (salonData.open_time || "").toLowerCase();
-      if (openStr.includes("pm") && openHour < 12) openHour += 12;
-      if (openStr.includes("am") && openHour === 12) openHour = 0;
+      // Parse times into total minutes from start of day
+      const parseTimeStr = (tStr: string, defaultHour: number) => {
+        if (!tStr) return defaultHour * 60;
+        const lower = tStr.toLowerCase();
+        const parts = lower.split(':');
+        let h = parseInt(parts[0], 10);
+        if (isNaN(h)) h = defaultHour;
+        let m = parts.length > 1 ? parseInt(parts[1], 10) : 0;
+        if (isNaN(m)) m = 0;
+        if (lower.includes('pm') && h < 12) h += 12;
+        if (lower.includes('am') && h === 12) h = 0;
+        return h * 60 + m;
+      };
 
-      let closeHour = parseInt(salonData.close_time?.split(':')[0] || "8", 10);
-      const closeStr = (salonData.close_time || "08:00 pm").toLowerCase();
-      if (closeStr.includes("pm") && closeHour < 12) closeHour += 12;
-      if (closeStr.includes("am") && closeHour === 12) closeHour = 0;
+      let openMinutes = parseTimeStr(salonData.open_time, 10);
+      let closeMinutes = parseTimeStr(salonData.close_time, 20);
 
-      if (openHour > closeHour) closeHour += 24;
-
-      // Safety check to prevent infinite or massive loops
-      if (isNaN(openHour) || isNaN(closeHour)) {
-        openHour = 10;
-        closeHour = 20;
-      }
+      if (openMinutes > closeMinutes) closeMinutes += 24 * 60;
 
       const duration = salonData.slot_duration || 30;
 
-      for (let h = openHour; h <= closeHour; h++) {
-        const realH = h % 24;
-        for (let m = 0; m < 60; m += duration) {
-           const ampm = realH >= 12 ? "PM" : "AM";
-           const hr12 = realH > 12 ? realH - 12 : (realH === 0 ? 12 : realH);
-           const timeStr = `${hr12}:${m === 0 ? "00" : m} ${ampm}`;
-           
-           baseGenerator.push({
-              id: timeStr,
-              time: timeStr,
-              status: "available",
-              totalSeats: salonData.total_seats || 4,
-              bookedSeats: 0
-           });
-        }
+      for (let totalMins = openMinutes; totalMins < closeMinutes; totalMins += duration) {
+        const realH = Math.floor(totalMins / 60) % 24;
+        const m = totalMins % 60;
+        const ampm = realH >= 12 ? "PM" : "AM";
+        const hr12 = realH > 12 ? realH - 12 : (realH === 0 ? 12 : realH);
+        const timeStr = `${hr12}:${m.toString().padStart(2, "0")} ${ampm}`;
+        
+        baseGenerator.push({
+          id: timeStr,
+          time: timeStr,
+          status: "available",
+          totalSeats: salonData.total_seats || 4,
+          bookedSeats: 0
+        });
       }
 
       // Overlay owner-controlled slot status (blocked/available overrides)

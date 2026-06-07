@@ -115,6 +115,44 @@ export default function SettingsPage() {
     loadProfile();
   }, []);
 
+  // Real-time listener for services changes (Admin Sync)
+  useEffect(() => {
+    if (!salonId) return;
+    const servicesChannel = supabase
+      .channel('services-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'services', filter: `salon_id=eq.${salonId}` }, async () => {
+        const { data: servicesData } = await supabase.from("services").select("*").eq("salon_id", salonId);
+        if (servicesData) {
+          setSalon(prev => ({ ...prev, services: servicesData }));
+          toast({ title: "Services Updated", description: "Your services were updated by the admin.", duration: 3000 });
+        }
+      })
+      .subscribe();
+
+    const salonChannel = supabase
+      .channel('salon-sync')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'salons', filter: `id=eq.${salonId}` }, (payload) => {
+        const updatedSalon = payload.new as any;
+        setSalon(prev => ({
+          ...prev,
+          name: updatedSalon.name || prev.name,
+          address: updatedSalon.address || prev.address,
+          description: updatedSalon.description || prev.description,
+          latitude: updatedSalon.latitude || prev.latitude,
+          longitude: updatedSalon.longitude || prev.longitude,
+          categories: updatedSalon.categories || prev.categories,
+          amenities: updatedSalon.amenities || prev.amenities,
+        }));
+        toast({ title: "Salon Updated", description: "Your salon details were updated by the admin.", duration: 3000 });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(servicesChannel);
+      supabase.removeChannel(salonChannel);
+    };
+  }, [salonId]);
+
   // Refs for file uploads
   const fileInputRef = useRef<HTMLInputElement>(null);
   const upiInputRef = useRef<HTMLInputElement>(null);

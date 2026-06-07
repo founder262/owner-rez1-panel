@@ -93,12 +93,32 @@ export default function NotificationsPage() {
       (b.target_type === "individual" || b.target_type === "broadcast_owners")
     );
 
+    // 1b. Fetch booking dates for these alerts
+    const bookingIds = alerts.map(a => a.booking_id).filter(Boolean);
+    let bookingDates: Record<string, string> = {};
+    if (bookingIds.length > 0) {
+      const { data: bookingsData } = await supabase
+        .from("bookings")
+        .select("id, booking_date")
+        .in("id", bookingIds);
+      if (bookingsData) {
+        bookingsData.forEach(b => {
+          if (b.booking_date) bookingDates[b.id] = b.booking_date;
+        });
+      }
+    }
+
     const combined = [
       // Booking alerts (new bookings) — shown as "New Booking"
-      ...alerts.map((a: any) => ({
-        ...a,
-        _kind: "alert",
-      })),
+      ...alerts.map((a: any) => {
+        const bDate = bookingDates[a.booking_id];
+        const dateStr = bDate ? new Date(bDate).toLocaleDateString() : "";
+        return {
+          ...a,
+          _kind: "alert",
+          actual_booking_date: dateStr, // Attach actual date
+        };
+      }),
       // Direct owner notifications (cancellations from customer)
       ...directOwnerNotifs.map((n: any) => ({
         id: n.id,
@@ -245,10 +265,18 @@ export default function NotificationsPage() {
                       </p>
                       <div className="flex items-center gap-2 mt-2">
                         <Clock className="h-3 w-3 text-primary" />
-                        {n._kind === "alert" && (
-                          <span className="text-xs font-medium text-primary">{formatSlotLabel(n.booking_time)} • </span>
+                        {n._kind === "alert" ? (
+                          <span className="text-xs font-medium text-primary">
+                            {formatSlotLabel(n.booking_time)} {n.actual_booking_date ? `• ${n.actual_booking_date}` : ""}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">{new Date(n.created_at).toLocaleString()}</span>
                         )}
-                        <span className="text-xs text-muted-foreground">{new Date(n.created_at).toLocaleString()}</span>
+                        {n._kind === "alert" && (
+                           <span className="text-xs text-muted-foreground ml-auto opacity-70">
+                             Booked: {new Date(n.created_at).toLocaleString()}
+                           </span>
+                        )}
                       </div>
                     </div>
                     <button

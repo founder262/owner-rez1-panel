@@ -36,6 +36,7 @@ export default function BookingsPage() {
   const [bookings, setBookings] = useState<any[]>([]);
   const [fromDate, setFromDate] = useState<string>("");
   const [toDate, setToDate] = useState<string>("");
+  const [historyDisplayCount, setHistoryDisplayCount] = useState(5);
   const { toast } = useToast();
 
   const loadBookings = async () => {
@@ -249,20 +250,12 @@ export default function BookingsPage() {
 
   const cancelBooking = async (id: string) => {
     const booking = bookings.find(b => b.id === id);
-    if (booking) {
-      const slotTimeStr = `${booking.booking_date}T${booking.booking_time.padStart(5, '0')}:00`;
-      const slotTime = new Date(slotTimeStr);
-      const now = new Date();
-      const diffMs = slotTime.getTime() - now.getTime();
-      const diffMins = diffMs / (1000 * 60);
-      if (diffMins < 180) {
-        toast({
-          title: "Cannot Cancel Booking",
-          description: "Salon owners can only cancel bookings before 3 hours of the slot time.",
-          variant: "destructive",
-        });
-        return;
-      }
+    if (!booking) return;
+
+    const reason = window.prompt("Please provide a reason for cancellation:");
+    if (!reason || reason.trim() === "") {
+      toast({ title: "Cancellation reason is required", variant: "destructive" });
+      return;
     }
 
     setBookings((prev) =>
@@ -271,7 +264,7 @@ export default function BookingsPage() {
     const { data: res, error } = await supabase.functions.invoke("cancel-booking", {
       body: {
         booking_id: id,
-        cancel_reason: "Emergency cancellation by owner",
+        cancel_reason: reason.trim(),
         cancelled_by: "owner",
       },
     });
@@ -357,7 +350,7 @@ export default function BookingsPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {filtered.map((booking) => (
+            {(tab === "history" ? [...filtered].reverse().slice(0, historyDisplayCount) : filtered).map((booking) => (
               <Card key={booking.id} className="p-4">
                 <div className="flex items-start justify-between mb-2">
                   <div>
@@ -431,6 +424,11 @@ export default function BookingsPage() {
                 )}
               </Card>
             ))}
+            {tab === "history" && filtered.length > historyDisplayCount && (
+              <Button onClick={() => setHistoryDisplayCount(prev => prev + 5)} variant="outline" className="w-full mt-4">
+                Show More
+              </Button>
+            )}
           </div>
         )}
       </div>
