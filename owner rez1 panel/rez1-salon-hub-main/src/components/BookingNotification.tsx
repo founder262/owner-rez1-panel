@@ -30,8 +30,8 @@ export function BookingNotification() {
   const [needsAudioUnlock, setNeedsAudioUnlock] = useState(false);
   const { playBookingSound } = useNotificationSound();
 
-  // Track the last alert ID we've already processed (to avoid duplicates between realtime + polling)
-  const lastSeenIdRef = useRef<string | null>(null);
+  // Track ALL alert IDs we've already processed (Set prevents duplicates from realtime + polling race)
+  const seenIdsRef = useRef<Set<string>>(new Set());
   const salonIdsRef = useRef<string[]>([]);
 
   // Fetch all salon IDs owned by this user
@@ -47,11 +47,11 @@ export function BookingNotification() {
     return ids;
   }, []);
 
-  // Process a new alert — deduplicated by ID
+  // Process a new alert — deduplicated by ID using a Set to handle concurrent realtime + polling calls
   const handleNewAlert = useCallback(async (newAlert: any) => {
     if (!newAlert?.id) return;
-    if (lastSeenIdRef.current === newAlert.id) return;
-    lastSeenIdRef.current = newAlert.id;
+    if (seenIdsRef.current.has(newAlert.id)) return;
+    seenIdsRef.current.add(newAlert.id);
 
     const isCancellation = (newAlert.customer_name || "").includes("❌") || 
                            (newAlert.customer_name || "").toLowerCase().includes("cancel");
@@ -82,7 +82,11 @@ export function BookingNotification() {
       isCancellation,
     };
 
-    setNotifications(prev => [alertUi, ...prev].slice(0, 5));
+    // Also deduplicate inside state as a safety net (handles edge case where Set check raced)
+    setNotifications(prev => {
+      if (prev.some(n => n.id === alertUi.id)) return prev;
+      return [alertUi, ...prev].slice(0, 5);
+    });
     addNotification({ customerName: alertUi.customerName, service: alertUi.service, time: alertUi.time });
 
     // Update notification bell count
@@ -113,6 +117,10 @@ export function BookingNotification() {
     return () => { delete (window as any).__rez1_test_notification; };
   }, [handleNewAlert]);
 
+  // Stable ref to handleNewAlert — avoids tearing down WebSocket channels when callback identity changes
+  const handleNewAlertRef = useRef(handleNewAlert);
+  useEffect(() => { handleNewAlertRef.current = handleNewAlert; }, [handleNewAlert]);
+
   // === REALTIME SUBSCRIPTION ===
   useEffect(() => {
     let active = true;
@@ -136,7 +144,7 @@ export function BookingNotification() {
               filter: `salon_id=eq.${salonId}`,
             },
             (payload) => {
-              if (active) handleNewAlert(payload.new);
+              if (active) handleNewAlertRef.current(payload.new);
             }
           )
           .subscribe((status) => {
@@ -151,7 +159,8 @@ export function BookingNotification() {
       active = false;
       activeChannels.forEach(ch => supabase.removeChannel(ch));
     };
-  }, [loadSalonIds, handleNewAlert]);
+  // Only re-subscribe when the salon list changes — NOT on every handleNewAlert identity change
+  }, [loadSalonIds]);
 
   // === POLLING FALLBACK (every 20 seconds) ===
   // Guarantees notifications even if WebSocket realtime connection drops
@@ -173,7 +182,7 @@ export function BookingNotification() {
         .limit(1)
         .maybeSingle();
 
-      if (data && data.id !== lastSeenIdRef.current) {
+      if (data && !seenIdsRef.current.has(data.id)) {
         handleNewAlert(data);
       }
     };
