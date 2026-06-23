@@ -57,7 +57,7 @@ export default function SuspendedPage() {
 
         <div className="flex flex-col gap-3">
           <Button variant="outline" className="h-12 gap-2" asChild>
-            <a href="mailto:support@rez1.com">
+            <a href="mailto:contact@rez1.in">
               <Phone className="h-4 w-4" /> Contact Administration
             </a>
           </Button>

@@ -162,7 +162,7 @@ const TermsContent = () => (
     
     <h3 className="text-foreground font-semibold mt-4">18. CONTACT</h3>
     <p>For support or queries:<br/>
-    Email: support@rez1.in<br/>
+    Email: contact@rez1.in<br/>
     Website: www.rez1.in</p>
   </div>
 );
@@ -267,7 +267,7 @@ const PrivacyContent = () => (
     
     <h3 className="text-foreground font-semibold mt-4">12. CONTACT US</h3>
     <p>For any privacy-related questions:<br/>
-    Email: support@rez1.in<br/>
+    Email: contact@rez1.in<br/>
     Website: www.rez1.in</p>
   </div>
 );

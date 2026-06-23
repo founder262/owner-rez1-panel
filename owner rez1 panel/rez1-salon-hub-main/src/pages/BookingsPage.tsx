@@ -227,6 +227,7 @@ export default function BookingsPage() {
     });
     
     if (booking?.customer_id) {
+       // ── SEND COMPLETION NOTIFICATION ──
        await supabase.functions.invoke("admin-api", {
          body: {
            action: "INSERT",
@@ -242,6 +243,41 @@ export default function BookingsPage() {
            }
          }
        });
+
+       // ── AWARD +10 REWARD POINTS FOR COMPLETED BOOKING ──
+       try {
+         const { data: customerData } = await supabase
+           .from("customers")
+           .select("reward_points")
+           .eq("id", booking.customer_id)
+           .maybeSingle();
+
+         const currentPoints = customerData?.reward_points || 0;
+         const newPoints = currentPoints + 10;
+
+         await supabase
+           .from("customers")
+           .update({ reward_points: newPoints })
+           .eq("id", booking.customer_id);
+
+         // Record reward transaction for history
+         await supabase.functions.invoke("admin-api", {
+           body: {
+             action: "INSERT",
+             table: "reward_transactions",
+             data: {
+               user_id: booking.customer_id,
+               points: 10,
+               transaction_type: "Booking Reward",
+               description: `+10 points awarded for completed booking at ${booking.salons?.name || 'salon'}`,
+               booking_id: id,
+               created_at: new Date().toISOString(),
+             }
+           }
+         });
+       } catch (ptErr) {
+         console.warn("Reward points award failed (non-blocking):", ptErr);
+       }
     }
 
     toast({ title: "Booking marked as completed" });
