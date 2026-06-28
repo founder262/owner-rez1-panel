@@ -11,10 +11,23 @@ export default function SplashPage() {
     let timeout: NodeJS.Timeout;
 
     const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        timeout = setTimeout(() => navigate("/dashboard"), 1500);
-      } else {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) {
+          console.error("Auth check error:", error);
+          if (error.message?.includes("Invalid Refresh Token") || error.message?.includes("Refresh Token Not Found") || error.status === 400) {
+            await supabase.auth.signOut().catch(() => {});
+          }
+          timeout = setTimeout(() => navigate("/login"), 1500);
+          return;
+        }
+        if (session) {
+          timeout = setTimeout(() => navigate("/dashboard"), 1500);
+        } else {
+          timeout = setTimeout(() => navigate("/login"), 2500);
+        }
+      } catch (err) {
+        console.error("Unexpected error during auth check:", err);
         timeout = setTimeout(() => navigate("/login"), 2500);
       }
     };

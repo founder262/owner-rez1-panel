@@ -10,7 +10,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { salonName, ownerName, email, phone, message } = await req.json()
+    const { salonName, ownerName, name, email, phone, message, source } = await req.json()
+    const resolvedName = ownerName || name || 'N/A'
+    const emailSource = source === 'customer_help_center' ? 'Customer Panel' : 'Owner Panel'
 
     const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
     if (!RESEND_API_KEY) {
@@ -22,10 +24,11 @@ Deno.serve(async (req) => {
     }
 
     const emailBody = `
-New support request from REZ1 Owner Panel
+New support request from REZ1 ${emailSource}
 
+Source: ${emailSource}
 Salon Name: ${salonName || 'N/A'}
-Owner Name: ${ownerName || 'N/A'}
+User Name: ${resolvedName}
 Email: ${email || 'N/A'}
 Phone: ${phone || 'N/A'}
 
@@ -33,7 +36,7 @@ Message / Issue:
 ${message || '(No message provided)'}
 
 ---
-Sent via REZ1 Owner Panel Support Button
+Sent via REZ1 Support Button
     `.trim()
 
     const res = await fetch('https://api.resend.com/emails', {
@@ -43,10 +46,10 @@ Sent via REZ1 Owner Panel Support Button
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'REZ1 Support <onboarding@resend.dev>',
-        to: ['founder@rez1.in'],
+        from: 'REZ1 Support <support@rez1.in>',
+        to: ['contact@rez1.in'],
         reply_to: email || 'noreply@rez1.in',
-        subject: `Support Request - ${salonName || 'Owner Panel'}`,
+        subject: `Support Request [${emailSource}] - ${salonName || resolvedName}`,
         text: emailBody,
       }),
     })
