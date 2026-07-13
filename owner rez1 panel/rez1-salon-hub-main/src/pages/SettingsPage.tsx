@@ -58,6 +58,27 @@ export default function SettingsPage() {
   const [amenityInput, setAmenityInput] = useState("");
   const [profileDetails, setProfileDetails] = useState({ username: "" });
   const [salonId, setSalonId] = useState<string | null>(null);
+  // No hardcoded fallback — only show categories that are active in the DB
+  const [dbCategories, setDbCategories] = useState<string[]>([]);
+
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("categories")
+          .select("name")
+          .eq("is_active", true)
+          .order("name", { ascending: true });
+        
+        if (!error && data && data.length > 0) {
+          setDbCategories(data.map((c: any) => c.name));
+        }
+      } catch (err) {
+        console.warn("Failed to fetch categories:", err);
+      }
+    };
+    fetchCategories();
+  }, []);
   
   // Support Email State
   const [showSupportInput, setShowSupportInput] = useState(false);
@@ -612,7 +633,7 @@ export default function SettingsPage() {
             <div className="space-y-2">
               <Label className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">Salon Categories</Label>
               <div className="flex flex-wrap gap-2 mt-1">
-                {["Men", "Women", "Unisex", "Pets", "Bridal"].map(cat => (
+                {dbCategories.map(cat => (
                   <button
                     key={cat}
                     type="button"

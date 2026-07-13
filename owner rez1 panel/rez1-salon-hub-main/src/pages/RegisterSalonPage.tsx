@@ -319,6 +319,27 @@ export default function RegisterSalonPage() {
   // Legal checks
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
+  // No hardcoded fallback — only show categories that are active in the DB
+  const [dbCategories, setDbCategories] = useState<string[]>([]);
+
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("categories")
+          .select("name")
+          .eq("is_active", true)
+          .order("name", { ascending: true });
+        
+        if (!error && data && data.length > 0) {
+          setDbCategories(data.map((c: any) => c.name));
+        }
+      } catch (err) {
+        console.warn("Failed to fetch categories:", err);
+      }
+    };
+    fetchCategories();
+  }, []);
 
   const update = (key: string, value: string) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -823,7 +844,7 @@ export default function RegisterSalonPage() {
                             <div className="space-y-2">
                               <Label>Salon Categories *</Label>
                               <div className="flex flex-wrap gap-2 mt-1">
-                                {["Men", "Women", "Unisex", "Pets", "Bridal"].map(cat => (
+                                {dbCategories.map(cat => (
                                   <button
                                     key={cat}
                                     type="button"
