@@ -29,6 +29,8 @@ Deno.serve(async (req) => {
       durationMinutes,
       services,
       razorpayPaymentId,
+      phonepeMerchantTransactionId,
+      phonepeTransactionId,
       customerName,
       serviceNames,
       slotTimeLabel,
@@ -80,6 +82,8 @@ Deno.serve(async (req) => {
         duration_minutes: durationMinutes,
         services: services,
         razorpay_payment_id: razorpayPaymentId || null,
+        phonepe_merchant_transaction_id: phonepeMerchantTransactionId || null,
+        phonepe_transaction_id: phonepeTransactionId || null,
       })
       .select()
       .single()
