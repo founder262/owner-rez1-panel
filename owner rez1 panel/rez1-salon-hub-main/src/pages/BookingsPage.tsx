@@ -412,8 +412,24 @@ export default function BookingsPage() {
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {booking.duration_minutes} min • ₹{booking.total_amount || 0}
                     </p>
+                    <div className="mt-1 flex items-center justify-end gap-1.5">
+                      <span className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        booking.payment_status === "paid"
+                          ? "bg-emerald-500/10 text-emerald-500"
+                          : booking.payment_status === "failed" || booking.status === "cancelled"
+                          ? "bg-destructive/10 text-destructive"
+                          : "bg-amber-500/10 text-amber-500"
+                      }`}>
+                        {booking.payment_method?.toUpperCase() || "PHONEPE"}: {booking.payment_status?.toUpperCase() || "PENDING"}
+                      </span>
+                    </div>
                   </div>
                 </div>
+                {booking.phonepe_transaction_id && (
+                  <p className="text-[11px] font-mono text-muted-foreground bg-muted/30 px-2 py-1 rounded mt-2">
+                    Txn ID: {booking.phonepe_transaction_id}
+                  </p>
+                )}
                 {booking.status === "upcoming" && (
                   <div className="flex gap-2 mt-3 pt-3 border-t border-border">
                     <Button
