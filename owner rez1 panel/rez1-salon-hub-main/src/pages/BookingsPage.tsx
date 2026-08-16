@@ -420,14 +420,14 @@ export default function BookingsPage() {
                           ? "bg-destructive/10 text-destructive"
                           : "bg-amber-500/10 text-amber-500"
                       }`}>
-                        {booking.payment_method?.toUpperCase() || "PHONEPE"}: {booking.payment_status?.toUpperCase() || "PENDING"}
+                        {booking.payment_method?.toUpperCase() || "RAZORPAY"}: {booking.payment_status?.toUpperCase() || "PENDING"}
                       </span>
                     </div>
                   </div>
                 </div>
-                {booking.phonepe_transaction_id && (
+                {booking.razorpay_payment_id && (
                   <p className="text-[11px] font-mono text-muted-foreground bg-muted/30 px-2 py-1 rounded mt-2">
-                    Txn ID: {booking.phonepe_transaction_id}
+                    Razorpay ID: {booking.razorpay_payment_id}
                   </p>
                 )}
                 {booking.status === "upcoming" && (
